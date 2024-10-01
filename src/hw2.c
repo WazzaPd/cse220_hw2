@@ -59,7 +59,7 @@ void print_packet(unsigned int packet[])
     iterator++;
 
     int address_bits;
-    address_bits = (*iterator >> 2);
+    address_bits = *iterator;
 
     printf("Packet Type: %s\n", packet_type);
     printf("Address: %d\n", address_bits);
@@ -76,7 +76,7 @@ void print_packet(unsigned int packet[])
             printf(" %d", data);
         }
     }
-
+    printf("\n");
 }
 
 void store_values(unsigned int packets[], char *memory)
