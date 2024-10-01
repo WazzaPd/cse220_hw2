@@ -68,12 +68,12 @@ void print_packet(unsigned int packet[])
     printf("Tag: %d\n", tag);
     printf("Last BE: %d\n", lastBE);
     printf("1st BE: %d\n", firstBE);
-    printf("Data:");
+    printf("Data: ");
     if(same_strings(packet_type, "Write")){
         for(int i = 0; i<length; i++){
             iterator ++;
             int data = *iterator;
-            printf(" %d", data);
+            printf("%d ", data);
         }
     }
     printf("\n");
