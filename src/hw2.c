@@ -207,7 +207,7 @@ int given_iterator_populate_data_return_byteCount(int length, unsigned int * ite
 }
 
 // returns # of words used to create completion packet
-int populate_completion_packet(int length, int firstBE, int lastBE, int tag, int requesterID, int address, unsigned int* completion, int total_words_used_by_completion, const char *memory){
+int populate_completion_packet(int length, int firstBE, int lastBE, int* byte_count, int tag, int requesterID, int address, unsigned int* completion, int total_words_used_by_completion, const char *memory){
 
     //Assemble Completion
     unsigned int* completion_iterator = completion + total_words_used_by_completion;
@@ -217,7 +217,7 @@ int populate_completion_packet(int length, int firstBE, int lastBE, int tag, int
     completion_iterator++;
     *completion_iterator = 0;
     *completion_iterator |= (220 << 16);
-    // byte count will be added after populating the data field
+    *(completion_iterator) |= *byte_count;
     completion_iterator ++;
     *completion_iterator = 0;
     *completion_iterator |= (requesterID<<16);
@@ -228,20 +228,15 @@ int populate_completion_packet(int length, int firstBE, int lastBE, int tag, int
 
     int words_used = 3;
 
-    int byte_count;
-    byte_count = given_iterator_populate_data_return_byteCount(length, completion_iterator, firstBE, lastBE, address, memory);
+    int bytes_used = given_iterator_populate_data_return_byteCount(length, completion_iterator, firstBE, lastBE, address, memory);
 
+    *byte_count = (*byte_count) - bytes_used;
     //calculate words_used
-    if(byte_count%4 == 0){
-        words_used += byte_count / 4;
+    if(bytes_used%4 == 0){
+        words_used += bytes_used / 4;
     } else{
-        words_used += (byte_count/4) + 1;
+        words_used += (bytes_used/4) + 1;
     }
-    
-    // Incorperate unadded fields
-    completion_iterator--;
-    completion_iterator--;
-    *(completion_iterator) |= byte_count;
 
     return words_used;
 }
@@ -287,7 +282,23 @@ unsigned int* create_completion(unsigned int packets[], const char *memory)
             size += sizeof(unsigned int) * (length + 3);
             completion = realloc(completion, size);
 
-            total_words_used_by_completion += populate_completion_packet(length, firstBE, lastBE, tag, requesterID, address, completion, total_words_used_by_completion, memory);
+            int* byte_count = malloc(sizeof(int)); 
+            *byte_count = (length*4);
+            if(length == 1){
+                (*byte_count) --;
+                for (int i = 0; i<4; i ++){
+                    if(firstBE & 1 << i) (*byte_count) ++;
+                }
+            } else {
+                (*byte_count) -= 8;
+                for (int i = 0; i<4; i ++){
+                    if(firstBE & 1 << i) (*byte_count) ++;
+                    if(lastBE & 1 << i) (*byte_count) ++;
+                }
+            }
+
+            total_words_used_by_completion += populate_completion_packet(length, firstBE, lastBE, byte_count, tag, requesterID, address, completion, total_words_used_by_completion, memory);
+            free(byte_count);
         } else {
             //size is not exact but good enough
             size += sizeof(unsigned int) * (length + 6);
@@ -300,15 +311,22 @@ unsigned int* create_completion(unsigned int packets[], const char *memory)
             int first_length_bytes = second_address - address;
             int first_length_words = first_length_bytes/4;
 
-            total_words_used_by_completion += populate_completion_packet(first_length_words, firstBE, 15, tag, requesterID, address, completion, total_words_used_by_completion, memory);
+            int* byte_count = malloc(sizeof(int)); 
+            *byte_count = (first_length_bytes - 4) + (second_length_bytes - 4);
+            for (int i = 0; i<4; i ++){
+                if(firstBE & 1 << i) (*byte_count) ++;
+                if(lastBE & 1 << i) (*byte_count) ++;
+            }
+
+            total_words_used_by_completion += populate_completion_packet(first_length_words, firstBE, 15, byte_count, tag, requesterID, address, completion, total_words_used_by_completion, memory);
 
             //if the length 1, treat lastBE as if it is firstBE
             if(second_length_words == 1){
-                total_words_used_by_completion += populate_completion_packet(second_length_words, lastBE, 15, tag, requesterID, second_address, completion, total_words_used_by_completion, memory);
+                total_words_used_by_completion += populate_completion_packet(second_length_words, lastBE, 15, byte_count, tag, requesterID, second_address, completion, total_words_used_by_completion, memory);
             } else{
-                total_words_used_by_completion += populate_completion_packet(second_length_words, 15, lastBE, tag, requesterID, second_address, completion, total_words_used_by_completion, memory);
-                total_words_used_by_completion += populate_completion_packet(second_length_words, 15, lastBE, tag, requesterID, second_address, completion, total_words_used_by_completion, memory);
+                total_words_used_by_completion += populate_completion_packet(second_length_words, 15, lastBE, byte_count, tag, requesterID, second_address, completion, total_words_used_by_completion, memory);
             }
+            free(byte_count);
         }
 
     }
